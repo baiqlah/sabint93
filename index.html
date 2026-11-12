@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000080">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sabin T93">
+    <meta name="description" content="Aplikasi Pengukur Luas Lahan & Kalkulator Estimasi Panen Penebas Padi">
+    <link id="pwaManifestLink" rel="manifest" href="">
+    <title>Sabin T93 - Pengukur Luas Lahan & Estimasi Panen ver. 1.1.0</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS & JS untuk Peta Satelite -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        palette: {
+                            bgIce: '#E0F2FE',
+                            cardWhite: '#FEF08A',
+                            winBlue: '#0E533B',
+                            pastelBlue: '#FEF08A',
+                            darkBlueText: '#064E3B',
+                            electricBlue: '#0E533B',
+                            dangerRed: '#EF4444',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #E0F2FE;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #map {
+            height: calc(100vh - 310px);
+            min-height: 360px;
+            max-height: 540px;
+            width: 100%;
+            border-radius: 1rem;
+            z-index: 1;
+        }
+        /* Custom Leaflet Vertex Marker */
+        .vertex-marker {
+            background-color: #E0F2FE;
+            border: 3px solid #64748B;
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        }
+        /* Animasi perpindahan tab ala Android */
+        .tab-page {
+            animation: fadeIn 0.2s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="text-slate-800 font-sans antialiased min-h-screen flex flex-col items-center bg-[#E0F2FE]">
+
+    <!-- Android App Shell Container (Latar Belakang Biru Langit #E0F2FE) -->
+    <div class="w-full max-w-md min-h-screen bg-[#E0F2FE] shadow-2xl flex flex-col relative pb-20 border-x border-slate-300">
+
+        <!-- Android App Bar / Top Header (Warna Utama Deep Emerald #0E533B) -->
+        <header class="bg-[#0E533B] text-[#E0F2FE] shadow-md sticky top-0 z-50 px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-[#E0F2FE] text-[#0E533B] w-9 h-9 rounded-xl shadow-sm flex items-center justify-center">
+                    <i class="fa-solid fa-wheat-awn text-lg"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-1.5">
+                        <h1 class="text-base font-bold tracking-tight leading-tight">Sabin <span class="text-[#FEF08A]">T93</span></h1>
+                        <span id="networkStatusBadge" class="bg-[#FEF08A] text-[#064E3B] text-[9px] px-1.5 py-0.5 rounded-md font-bold">Online</span>
+                    </div>
+                    <p id="headerSubtitle" class="text-[11px] text-[#FEF08A] font-medium">1. Pemetaan Satelit</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <button id="installPwaBtn" class="hidden bg-[#FEF08A] hover:brightness-95 active:scale-95 text-[#064E3B] text-[11px] px-2.5 py-1.5 rounded-xl font-extrabold shadow-sm flex items-center gap-1 transition" title="Install Aplikasi Sabin T93 ke HP">
+                    <i class="fa-solid fa-download"></i>
+                    <span>Install</span>
+                </button>
+                <button onclick="switchTab('page-konversi')" class="bg-[#064E3B] hover:brightness-95 text-[#E0F2FE] text-xs px-2.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition shadow-sm border border-slate-300/40" title="Lihat Luas Saat Ini">
+                    <i class="fa-solid fa-draw-polygon text-[#FEF08A]"></i>
+                    <span id="badgeTopM2">0 m²</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- PWA Install Banner -->
+        <div id="pwaBanner" class="bg-[#D4D2CD] text-[#064E3B] px-3.5 py-2 text-[11px] flex items-center justify-between border-b border-slate-300">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-mobile-screen-button text-[#0E533B] text-sm"></i>
+                <span>Pasang <b>Sabin T93</b> di layar utama HP</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <button id="pwaBannerBtn" class="bg-[#0E533B] text-[#E0F2FE] font-bold px-2.5 py-1 rounded-lg text-[10px] shadow-sm active:scale-95 transition">
+                    Cara Pasang
+                </button>
+                <button onclick="document.getElementById('pwaBanner').classList.add('hidden')" class="text-slate-400 hover:text-[#064E3B] px-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Modal Panduan Install PWA -->
+        <div id="pwaModal" class="fixed inset-0 z-[100] hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div class="bg-[#E0F2FE] w-full max-w-sm rounded-2xl p-5 shadow-2xl border border-slate-300 space-y-3.5">
+                <div class="flex items-center justify-between border-b border-slate-300 pb-2.5">
+                    <div class="flex items-center gap-2">
+                        <div class="bg-[#0E533B] text-[#E0F2FE] w-8 h-8 rounded-xl flex items-center justify-center">
+                            <i class="fa-solid fa-mobile-screen"></i>
+                        </div>
+                        <h3 class="font-bold text-sm text-[#064E3B]">Install Aplikasi Sabin T93</h3>
+                    </div>
+                    <button onclick="document.getElementById('pwaModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-700">
+                        <i class="fa-solid fa-xmark text-base"></i>
+                    </button>
+                </div>
+                <div class="text-xs text-slate-700 space-y-2.5 leading-relaxed">
+                    <div class="bg-[#FEF08A] p-3 rounded-xl border border-slate-300 space-y-1.5">
+                        <p class="font-bold text-[#064E3B]"><i class="fa-brands fa-chrome mr-1 text-[#0E533B]"></i> Pengguna Chrome (Android):</p>
+                        <ol class="list-decimal list-inside space-y-1 text-[11px]">
+                            <li>Ketuk ikon titik tiga <b>(⋮)</b> di pojok kanan atas browser.</li>
+                            <li>Pilih menu <b>"Tambahkan ke layar utama"</b> atau <b>"Install aplikasi"</b>.</li>
+                        </ol>
+                    </div>
+                    <div class="bg-[#FEF08A] p-3 rounded-xl border border-slate-300 space-y-1.5">
+                        <p class="font-bold text-[#064E3B]"><i class="fa-brands fa-safari mr-1 text-[#0E533B]"></i> Pengguna Safari (iPhone):</p>
+                        <ol class="list-decimal list-inside space-y-1 text-[11px]">
+                            <li>Ketuk tombol <b>Bagikan (Share)</b> di bagian bawah layar.</li>
+                            <li>Pilih <b>"Add to Home Screen"</b>.</li>
+                        </ol>
+                    </div>
+                </div>
+                <button onclick="document.getElementById('pwaModal').classList.add('hidden')" class="w-full bg-[#0E533B] text-[#E0F2FE] py-2.5 rounded-xl text-xs font-bold shadow-sm">
+                    Mengerti
+                </button>
+            </div>
+        </div>
+
+        <!-- Toast Notification Box (Floating above Bottom Nav) -->
+        <div id="toastBox" class="fixed bottom-20 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50 hidden bg-[#064E3B] text-[#E0F2FE] px-4 py-3 rounded-2xl shadow-xl text-xs flex items-center gap-2.5 transition-all border border-[#0E533B]">
+            <i class="fa-solid fa-circle-info text-[#FEF08A] text-base shrink-0"></i>
+            <span id="toastMessage" class="font-medium">Pesan notifikasi</span>
+        </div>
+
+        <!-- Main Content Area (4 Pages) -->
+        <main class="flex-grow p-3.5">
+
+            <!-- ================= HALAMAN 1: PETA (MAP) ================= -->
+            <section id="page-map" class="tab-page space-y-3">
+                <div class="bg-[#E0F2FE]/95 backdrop-blur-sm p-3.5 rounded-2xl shadow-sm border border-slate-300 space-y-3">
+                    <!-- Search Bar -->
+                    <div class="flex gap-1.5">
+                        <input type="text" id="searchInput" placeholder="Ketikan Nama Desa / Kecamatan..." 
+                               class="w-full px-3 py-2 text-xs bg-[#ffffff] border border-slate-300 text-[#064E3B] placeholder-slate-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0E533B]">
+                        <button id="searchBtn" class="bg-[#0E533B] active:scale-95 text-[#E0F2FE] px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1 shrink-0 shadow-sm">
+                            <i class="fa-solid fa-magnifying-glass"></i> Cari
+                        </button>
+                    </div>
+
+                    <!-- Quick GPS & Grid Toolbar -->
+                    <div class="grid grid-cols-3 gap-1.5">
+                        <button id="toggleGridBtn" class="bg-[#FEF08A] active:scale-95 text-[#064E3B] py-2 px-2 rounded-xl text-[11px] font-bold shadow-xs transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-border-all text-[#0E533B]"></i> Grid: ON
+                        </button>
+                        <button id="walkGpsBtn" class="bg-[#FEF08A] active:scale-95 text-[#064E3B] py-2 px-2 rounded-xl text-[11px] font-bold shadow-xs transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-person-walking text-[#0E533B]"></i> Rekam Jalan
+                        </button>
+                        <button id="locateBtn" class="bg-[#FEF08A] active:scale-95 text-[#064E3B] py-2 px-2 rounded-xl text-[11px] font-bold shadow-xs transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-crosshairs text-[#0E533B]"></i> Aktifkan GPS
+                        </button>
+                    </div>
+
+                    <!-- Interactive Map Container -->
+                    <div class="relative">
+                        <div id="map"></div>
+                        <!-- Floating Mini Area Info -->
+                        <div class="absolute top-2.5 right-2.5 z-[400] bg-[#E0F2FE]/95 backdrop-blur-sm text-[#064E3B] px-3 py-1.5 rounded-xl shadow-md border border-slate-300 text-right">
+                            <p class="text-[10px] text-[#0E533B] font-bold uppercase flex items-center justify-end gap-1">
+                                <i class="fa-solid fa-draw-polygon text-[#64748B]"></i> Luas Terukur
+                            </p>
+                            <p class="text-xs font-extrabold text-[#064E3B]"><span id="mapQuickM2">0</span> m² • <span id="mapQuickUbin">0</span> ubin</p>
+                        </div>
+                        <!-- Floating Instruction Badge -->
+                        <div class="absolute bottom-2.5 left-2.5 right-2.5 z-[400] bg-[#064E3B]/95 backdrop-blur-sm text-[#E0F2FE] text-[11px] px-3 py-1.5 rounded-xl pointer-events-none shadow text-center">
+                            <i class="fa-solid fa-hand-pointer text-[#FEF08A] mr-1"></i> Ketuk peta tambah titik • Ketuk titik putih hapus
+                        </div>
+                    </div>
+
+                    <!-- Map Action Buttons -->
+                    <div class="flex items-center justify-between gap-1.5 pt-1">
+                        <div class="flex gap-1.5">
+                            <button id="undoBtn" class="bg-[#FEF08A] active:brightness-95 text-[#064E3B] px-3 py-2 rounded-xl text-[11px] font-bold transition flex items-center gap-1">
+                                <i class="fa-solid fa-rotate-left text-[#0E533B]"></i> Batal Titik
+                            </button>
+                            <button id="clearBtn" class="bg-[#EF4444] active:brightness-95 text-[#E0F2FE] px-3 py-2 rounded-xl text-[11px] font-bold transition flex items-center gap-1 shadow-xs">
+                                <i class="fa-solid fa-trash-can"></i> Reset
+                            </button>
+                        </div>
+                        <button id="sampleBtn" class="text-[#0E533B] active:opacity-80 text-[11px] font-bold underline px-1 py-1">
+                            Contoh Lahan
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tombol Aksi Utama -->
+                <button onclick="switchTab('page-konversi')" class="w-full bg-[#0E533B] active:scale-[0.99] text-[#E0F2FE] py-3.5 px-4 rounded-2xl text-xs font-bold shadow-md flex items-center justify-between transition">
+                    <span class="flex items-center gap-2">
+                        <i class="fa-solid fa-ruler-combined text-[#FEF08A]"></i>
+                        Lihat Detail Konversi Luas Lahan
+                    </span>
+                    <i class="fa-solid fa-arrow-right text-[#E0F2FE]"></i>
+                </button>
+            </section>
+
+            <!-- ================= HALAMAN 2: HASIL KONVERSI LUAS LAHAN ================= -->
+            <section id="page-konversi" class="tab-page hidden space-y-3.5">
+                <div class="bg-[#0E533B] text-[#E0F2FE] p-5 rounded-2xl shadow-md flex items-center justify-between">
+                    <div>
+                        <span class="text-[11px] uppercase tracking-wider text-[#FEF08A] font-semibold">Total Luas Bidang Sawah</span>
+                        <h2 class="text-3xl font-extrabold text-[#E0F2FE] mt-1"><span id="resM2">0</span> <span class="text-base font-medium text-[#FEF08A]">m²</span></h2>
+                        <p class="text-[11px] text-[#FEF08A] mt-1"><i class="fa-solid fa-draw-polygon text-[#E0F2FE] mr-1"></i> Dihitung dari <span id="vertexCountLabel">0</span> titik koordinat GPS</p>
+                    </div>
+                    <div class="bg-[#E0F2FE] p-3.5 rounded-2xl shadow-xs">
+                        <i class="fa-solid fa-draw-polygon text-3xl text-[#64748B]"></i>
+                    </div>
+                </div>
+
+                <!-- Grid Satuan Lokal & Nasional -->
+                <div class="bg-[#E0F2FE] p-4 rounded-2xl shadow-sm border border-slate-300 space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-[#064E3B]">Satuan Luas Tradisional & Nasional</h3>
+                    
+                    <div class="grid grid-cols-1 gap-3">
+                        <div class="bg-[#FEF08A] border border-slate-300 p-4 rounded-2xl flex items-center justify-between">
+                            <div>
+                                <p class="text-xs text-[#064E3B] font-bold">Ubin / Ru (Jawa Tengah)</p>
+                                <p class="text-[11px] text-slate-600">1 Ubin = 3,75m × 3,75m (14,0625 m²)</p>
+                            </div>
+                            <p class="text-2xl font-extrabold text-[#0E533B]"><span id="resUbin">0</span> <span class="text-xs font-semibold">ubin</span></p>
+                        </div>
+
+                        <div class="bg-[#FEF08A] border border-slate-300 p-4 rounded-2xl flex items-center justify-between">
+                            <div>
+                                <p class="text-xs text-[#064E3B] font-bold">Hektar (ha)</p>
+                                <p class="text-[11px] text-slate-600">1 Hektar = 10.000 m²</p>
+                            </div>
+                            <p class="text-2xl font-extrabold text-[#064E3B]"><span id="resHektar">0.000</span> <span class="text-xs font-semibold">ha</span></p>
+                        </div>
+
+                        <div class="bg-[#FEF08A] border border-slate-300 p-4 rounded-2xl flex items-center justify-between">
+                            <div>
+                                <p class="text-xs text-[#064E3B] font-bold">Bahu / Bouw</p>
+                                <p class="text-[11px] text-slate-600">1 Bahu = 500 Ubin (7.096,5 m²)</p>
+                            </div>
+                            <p class="text-2xl font-extrabold text-[#064E3B]"><span id="resBahu">0.000</span> <span class="text-xs font-semibold">bahu</span></p>
+                        </div>
+
+                        <div class="bg-[#FEF08A]/60 border border-slate-300 p-4 rounded-2xl flex items-center justify-between">
+                            <div>
+                                <p class="text-xs text-[#064E3B] font-bold">Petak Sampel Ubinan BPS</p>
+                                <p class="text-[11px] text-[#064E3B]/80">1 Petak Ubinan = 2,5m × 2,5m (6,25 m²)</p>
+                            </div>
+                            <p class="text-xl font-extrabold text-[#64748B]"><span id="resPetakUbinan">0</span> <span class="text-xs font-semibold">petak</span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navigasi Cepat -->
+                <div class="grid grid-cols-2 gap-2.5">
+                    <button onclick="switchTab('page-map')" class="bg-[#FEF08A] text-[#064E3B] py-3 px-4 rounded-2xl text-xs font-bold shadow-xs flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-map text-[#0E533B]"></i> Edit Peta
+                    </button>
+                    <button onclick="switchTab('page-kalkulator')" class="bg-[#0E533B] text-[#E0F2FE] py-3 px-4 rounded-2xl text-xs font-bold shadow-md flex items-center justify-center gap-1.5">
+                        <span>Hitung Tebasan</span> <i class="fa-solid fa-calculator text-[#FEF08A]"></i>
+                    </button>
+                </div>
+            </section>
+
+            <!-- ================= HALAMAN 3: KALKULATOR UBINAN & HARGA TEBASAN ================= -->
+            <section id="page-kalkulator" class="tab-page hidden space-y-3.5">
+                <div class="bg-[#E0F2FE] p-4 rounded-2xl shadow-sm border border-slate-300 space-y-4">
+                    <div class="border-b border-slate-300 pb-2.5 flex items-center justify-between">
+                        <div>
+                            <h2 class="font-bold text-sm text-[#064E3B] flex items-center gap-2">
+                                <i class="fa-solid fa-calculator text-[#0E533B]"></i> Kalkulator Tebasan Padi
+                            </h2>
+                            <p class="text-[11px] text-slate-500">Simulasi tonase gabah & penawaran harga</p>
+                        </div>
+                        <span class="bg-[#FEF08A] text-[#064E3B] text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1">
+                            <i class="fa-solid fa-draw-polygon text-[#64748B]"></i> <span id="calcAreaBadge">0</span> m²
+                        </span>
+                    </div>
+
+                    <!-- Nama Pemilik / Lokasi Petak -->
+                    <div>
+                        <label class="block text-xs font-semibold text-[#064E3B] mb-1">Nama Petani / Blok Lahan</label>
+                        <input type="text" id="farmerName" placeholder="Contoh: Mbah Amad Darjo - Blok Wetan" 
+                               class="w-full px-3.5 py-2.5 text-sm bg-[#FEF08A] border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0E533B]">
+                    </div>
+
+                    <!-- Sampel Ubinan -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-[#064E3B] mb-1">Ubinan (2,5×2,5m)</label>
+                            <div class="relative">
+                                <input type="number" id="ubinanWeight" value="4.5" step="0.1" min="0"
+                                       class="w-full px-3.5 py-2.5 text-sm bg-[#FEF08A] border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0E533B]">
+                                <span class="absolute right-3 top-2.5 text-xs text-[#064E3B] font-medium">Kg</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-[#064E3B] mb-1">Potongan Susut (%)</label>
+                            <div class="relative">
+                                <input type="number" id="shrinkagePct" value="10" step="1" min="0" max="50"
+                                       class="w-full px-3.5 py-2.5 text-sm bg-[#FEF08A] border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0E533B]">
+                                <span class="absolute right-3 top-2.5 text-xs text-[#064E3B] font-medium">%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Harga Gabah & Biaya Panen -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-[#064E3B] mb-1">Harga Gabah / Kg</label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2.5 text-xs text-[#064E3B] font-medium">Rp</span>
+                                <input type="number" id="grainPrice" value="6500" step="100" min="0"
+                                       class="w-full pl-8 pr-3 py-2.5 text-sm bg-[#FEF08A] border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0E533B]">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-[#064E3B] mb-1">Biaya Panen / Kg</label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2.5 text-xs text-[#064E3B] font-medium">Rp</span>
+                                <input type="number" id="harvestCost" value="600" step="50" min="0"
+                                       class="w-full pl-8 pr-3 py-2.5 text-sm bg-[#FEF08A] border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0E533B]">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Margin Keuntungan Penebas -->
+                    <div>
+                        <label class="block text-xs font-semibold text-[#064E3B] mb-1">Target Margin Penebas (%)</label>
+                        <input type="range" id="marginSlider" min="5" max="35" value="15" class="w-full accent-[#0E533B]">
+                        <div class="flex justify-between text-xs text-slate-500">
+                            <span>5% (Tipis)</span>
+                            <span class="font-bold text-[#0E533B]" id="marginLabel">15%</span>
+                            <span>35% (Tinggi)</span>
+                        </div>
+                    </div>
+
+                    <!-- Summary Box -->
+                    <div class="bg-[#0E533B] text-[#E0F2FE] p-4 rounded-2xl space-y-2.5 shadow-md">
+                        <div class="flex justify-between items-center border-b border-[#E0F2FE]/20 pb-2">
+                            <span class="text-xs text-[#FEF08A]">Estimasi Gabah Bersih</span>
+                            <span class="text-sm font-bold text-[#E0F2FE]"><span id="estTonase">0</span> Kg (<span id="estKwintal">0</span> Kw)</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-[#E0F2FE]/20 pb-2">
+                            <span class="text-xs text-[#FEF08A]">Nilai Jual Kotor Gabah</span>
+                            <span class="text-sm font-semibold" id="estGrossValue">Rp 0</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-1">
+                            <div>
+                                <span class="text-xs text-[#FEF08A] block font-bold">Harga Tebas Maksimal</span>
+                                <span class="text-[10px] text-[#E0F2FE]/80">(Bersih potong panen & margin)</span>
+                            </div>
+                            <span class="text-lg font-extrabold text-[#064E3B] bg-[#FEF08A] px-2.5 py-1 rounded-xl" id="estOfferPrice">Rp 0</span>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="grid grid-cols-2 gap-2.5 pt-1">
+                        <button id="saveRecordBtn" class="bg-[#0E533B] active:scale-95 text-[#E0F2FE] py-3 px-4 rounded-xl text-xs font-bold shadow-sm transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-floppy-disk"></i> Simpan Riwayat
+                        </button>
+                        <button id="copySummaryBtn" class="bg-[#FEF08A] active:scale-95 text-[#064E3B] py-3 px-4 rounded-xl text-xs font-bold shadow-xs transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-share-nodes text-[#0E533B]"></i> Salin WA
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ================= HALAMAN 4: RIWAYAT UKUR LAHAN ================= -->
+            <section id="page-riwayat" class="tab-page hidden space-y-3.5">
+                <div class="bg-[#E0F2FE] p-4 rounded-2xl shadow-sm border border-slate-300">
+                    <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-300">
+                        <div>
+                            <h3 class="text-sm font-bold text-[#064E3B] flex items-center gap-2">
+                                <i class="fa-solid fa-clock-rotate-left text-[#0E533B]"></i> Riwayat Ukur Lahan
+                            </h3>
+                            <p class="text-[11px] text-slate-500">Daftar catatan hasil hitung tebasan tersimpan</p>
+                        </div>
+                        <button id="clearHistoryBtn" class="bg-[#EF4444] text-[#E0F2FE] px-2.5 py-1.5 rounded-lg text-[11px] font-bold active:scale-95 transition shadow-xs">
+                            Hapus Semua
+                        </button>
+                    </div>
+                    <div id="historyList" class="space-y-2.5 text-xs">
+                        <p class="text-slate-400 text-center py-8 italic">Belum ada data lahan yang disimpan.</p>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Android Bottom Navigation Bar (#D4D2CD) -->
+        <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#D4D2CD]/95 backdrop-blur-md border-t border-slate-300 shadow-[0_-4px_15px_rgba(14,83,59,0.06)] z-50 px-2 py-1.5 grid grid-cols-4">
+            <button data-target="page-map" onclick="switchTab('page-map')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B] font-bold transition">
+                <div class="nav-pill px-4 py-1 rounded-full bg-[#FEF08A] mb-0.5 transition text-[#0E533B]">
+                    <i class="fa-solid fa-map-location-dot text-sm"></i>
+                </div>
+                <span class="text-[10px] text-[#0E533B]">Peta</span>
+            </button>
+
+            <button data-target="page-konversi" onclick="switchTab('page-konversi')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B]/80 font-medium transition">
+                <div class="nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]">
+                    <i class="fa-solid fa-ruler-combined text-sm"></i>
+                </div>
+                <span class="text-[10px] text-[#0E533B]">Konversi</span>
+            </button>
+
+            <button data-target="page-kalkulator" onclick="switchTab('page-kalkulator')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B]/80 font-medium transition">
+                <div class="nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]">
+                    <i class="fa-solid fa-calculator text-sm"></i>
+                </div>
+                <span class="text-[10px] text-[#0E533B]">Kalkulator</span>
+            </button>
+
+            <button data-target="page-riwayat" onclick="switchTab('page-riwayat')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B]/80 font-medium transition relative">
+                <div class="nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]">
+                    <i class="fa-solid fa-clock-rotate-left text-sm"></i>
+                </div>
+                <span class="text-[10px] text-[#0E533B]">Riwayat</span>
+                <span id="historyCountBadge" class="hidden absolute top-1 right-5 bg-[#64748B] text-[#E0F2FE] text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">0</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Global variables for Leaflet map & drawing
+        let map;
+        let polygonLayer = null;
+        let latLngs = [];
+        let markers = [];
+        let gridLayer = null;
+        let isGridOn = true;
+        let isWalkingMode = false;
+        let watchId = null;
+        let savedRecords = JSON.parse(localStorage.getItem('sabin_records') || '[]');
+
+        // Switch Tab Functionality
+        function switchTab(targetId) {
+            document.querySelectorAll('.tab-page').forEach(page => {
+                page.classList.add('hidden');
+            });
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+                targetEl.classList.remove('hidden');
+            }
+
+            // Update bottom nav styling
+            document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+                const pill = btn.querySelector('.nav-pill');
+                if (btn.getAttribute('data-target') === targetId) {
+                    if (pill) {
+                        pill.className = 'nav-pill px-4 py-1 rounded-full bg-[#FEF08A] mb-0.5 transition text-[#0E533B]';
+                    }
+                    btn.classList.add('font-bold');
+                    btn.classList.remove('font-medium', 'text-[#0E533B]/80');
+                } else {
+                    if (pill) {
+                        pill.className = 'nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]';
+                    }
+                    btn.classList.remove('font-bold');
+                    btn.classList.add('font-medium', 'text-[#0E533B]/80');
+                }
+            });
+
+            // Update subtitle & recalculate if needed
+            const subtitles = {
+                'page-map': '1. Pemetaan Satelit',
+                'page-konversi': '2. Detail Konversi Luas',
+                'page-kalkulator': '3. Kalkulator Tebasan',
+                'page-riwayat': '4. Riwayat Ukur Lahan'
+            };
+            const subTitleEl = document.getElementById('headerSubtitle');
+            if (subTitleEl && subtitles[targetId]) {
+                subTitleEl.textContent = subtitles[targetId];
+            }
+
+            if (targetId === 'page-map' && map) {
+                setTimeout(() => map.invalidateSize(), 200);
+            }
+        }
+
+        // Show Toast Notification
+        function showToast(msg) {
+            const toast = document.getElementById('toastBox');
+            const msgEl = document.getElementById('toastMessage');
+            if (toast && msgEl) {
+                msgEl.textContent = msg;
+                toast.classList.remove('hidden');
+                setTimeout(() => toast.classList.add('hidden'), 3000);
+            }
+        }
+
+        // Initialize Map on Load
+        window.onload = function() {
+            // Initialize Leaflet Map centered in Central Java
+            map = L.map('map', {
+                zoomControl: false
+            }).setView([-7.1507, 110.1403], 15);
+
+            // Add Zoom Control to Top Right
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            // Add ESRI World Imagery (Satellite)
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Add Label overlay
+            L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19
+            }).addTo(map);
+
+            // Map click event to add vertices
+            map.on('click', function(e) {
+                addVertex(e.latlng);
+            });
+
+            // Bind UI Events Safely
+            const searchBtn = document.getElementById('searchBtn');
+            if (searchBtn) {
+                searchBtn.addEventListener('click', executeSearch);
+            }
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') executeSearch();
+                });
+            }
+
+            const toggleGridBtn = document.getElementById('toggleGridBtn');
+            if (toggleGridBtn) {
+                toggleGridBtn.addEventListener('click', toggleGrid);
+            }
+            const walkGpsBtn = document.getElementById('walkGpsBtn');
+            if (walkGpsBtn) {
+                walkGpsBtn.addEventListener('click', toggleWalkGps);
+            }
+            const locateBtn = document.getElementById('locateBtn');
+            if (locateBtn) {
+                locateBtn.addEventListener('click', locateUser);
+            }
+            const undoBtn = document.getElementById('undoBtn');
+            if (undoBtn) {
+                undoBtn.addEventListener('click', undoVertex);
+            }
+            const clearBtn = document.getElementById('clearBtn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', clearPolygon);
+            }
+            const sampleBtn = document.getElementById('sampleBtn');
+            if (sampleBtn) {
+                sampleBtn.addEventListener('click', loadSamplePolygon);
+            }
+
+            const marginSlider = document.getElementById('marginSlider');
+            if (marginSlider) {
+                marginSlider.addEventListener('input', function() {
+                    const marginLabel = document.getElementById('marginLabel');
+                    if (marginLabel) marginLabel.textContent = this.value + '%';
+                    calculateTeasan();
+                });
+            }
+
+            // Calculator inputs real-time listener
+            ['ubinanWeight', 'shrinkagePct', 'grainPrice', 'harvestCost'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', calculateTeasan);
+                }
+            });
+
+            const saveRecordBtn = document.getElementById('saveRecordBtn');
+            if (saveRecordBtn) {
+                saveRecordBtn.addEventListener('click', saveRecord);
+            }
+            const copySummaryBtn = document.getElementById('copySummaryBtn');
+            if (copySummaryBtn) {
+                copySummaryBtn.addEventListener('click', copyWhatsAppSummary);
+            }
+            const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+            if (clearHistoryBtn) {
+                clearHistoryBtn.addEventListener('click', clearHistory);
+            }
+
+            // PWA install banner setup
+            setupPwa();
+
+            // Render History
+            renderHistory();
+        };
+
+        // Add Vertex to Polygon
+        function addVertex(latlng) {
+            latLngs.push(latLng);
+            const marker = L.marker(latlng, {
+                icon: L.divIcon({
+                    className: 'vertex-marker',
+                    iconSize: [14, 14],
+                    iconAnchor: [7, 7]
+                }),
+                draggable: true
+            }).addTo(map);
+
+            marker.on('click', function(e) {
+                L.DomEvent.stopPropagation(e);
+                removeVertex(marker);
+            });
+
+            marker.on('drag', function() {
+                const idx = markers.indexOf(marker);
+                if (idx !== -1) {
+                    latLngs[idx] = marker.getLatLng();
+                    updatePolygon();
+                }
+            });
+
+            markers.push(marker);
+            updatePolygon();
+        }
+
+        // Remove Single Vertex
+        function removeVertex(marker) {
+            const idx = markers.indexOf(marker);
+            if (idx !== -1) {
+                map.removeLayer(marker);
+                markers.splice(idx, 1);
+                latLngs.splice(idx, 1);
+                updatePolygon();
+                showToast("Titik koordinat dihapus");
+            }
+        }
+
+        // Undo Last Vertex
+        function undoVertex() {
+            if (markers.length > 0) {
+                const marker = markers.pop();
+                map.removeLayer(marker);
+                latLngs.pop();
+                updatePolygon();
+                showToast("Titik terakhir dibatalkan");
+            }
+        }
+
+        // Clear Entire Polygon
+        function clearPolygon() {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            latLngs = [];
+            updatePolygon();
+            showToast("Peta direset ulang");
+        }
+
+        // Update Polygon Shape & Calculate Area
+        function updatePolygon() {
+            if (polygonLayer) {
+                map.removeLayer(polygonLayer);
+                polygonLayer = null;
+            }
+
+            if (latLngs.length >= 3) {
+                polygonLayer = L.polygon(latLngs, {
+                    color: '#0E533B',
+                    weight: 3,
+                    fillColor: '#0E533B',
+                    fillOpacity: 0.35
+                }).addTo(map);
+            }
+
+            const areaM2 = latLngs.length >= 3 ? computeSphericalPolygonArea(latLngs) : 0;
+            updateAllMeasurements(areaM2);
+        }
+
+        // Compute Accurate Area in Square Meters (Spherical excess)
+        function computeSphericalPolygonArea(coords) {
+            if (coords.length < 3) return 0;
+            const radius = 6378137; // Earth radius in meters
+            let total = 0;
+            for (let i = 0; i < coords.length; i++) {
+                const p1 = coords[i];
+                const p2 = coords[(i + 1) % coords.length];
+                const p1LatRad = (p1.lat * Math.PI) / 180;
+                const p2LatRad = (p2.lat * Math.PI) / 180;
+                const p2LngRad = (p2.lng * Math.PI) / 180;
+                const p1LngRad = (p1.lng * Math.PI) / 180;
+                total += (p2LngRad - p1LngRad) * (2 + Math.sin(p1LatRad) + Math.sin(p2LatRad));
+            }
+            let area = Math.abs((total * radius * radius) / 2.0);
+            return Math.round(area * 100) / 100;
+        }
+
+        // Update All UI Area Labels
+        function updateAllMeasurements(m2) {
+            const ubin = m2 / 14.0625;
+            const hektar = m2 / 10000;
+            const bahu = m2 / 7096.5;
+            const petakUbinan = m2 / 6.25;
+
+            // Map Badge
+            const mapQuickM2 = document.getElementById('mapQuickM2');
+            const mapQuickUbin = document.getElementById('mapQuickUbin');
+            if (mapQuickM2) mapQuickM2.textContent = m2.toLocaleString('id-ID');
+            if (mapQuickUbin) mapQuickUbin.textContent = ubin.toFixed(1);
+
+            // Top Header Badge
+            const badgeTopM2 = document.getElementById('badgeTopM2');
+            if (badgeTopM2) badgeTopM2.textContent = m2 > 10000 ? (hektar.toFixed(2) + ' ha') : (Math.round(m2) + ' m²');
+
+            // Conversion Page
+            const resM2 = document.getElementById('resM2');
+            const vertexCountLabel = document.getElementById('vertexCountLabel');
+            const resUbin = document.getElementById('resUbin');
+            const resHektar = document.getElementById('resHektar');
+            const resBahu = document.getElementById('resBahu');
+            const resPetakUbinan = document.getElementById('resPetakUbinan');
+
+            if (resM2) resM2.textContent = m2.toLocaleString('id-ID');
+            if (vertexCountLabel) vertexCountLabel.textContent = latLngs.length;
+            if (resUbin) resUbin.textContent = ubin.toFixed(1);
+            if (resHektar) resHektar.textContent = hektar.toFixed(4);
+            if (resBahu) resBahu.textContent = bahu.toFixed(3);
+            if (resPetakUbinan) resPetakUbinan.textContent = Math.round(petakUbinan);
+
+            // Calculator Page Badge
+            const calcAreaBadge = document.getElementById('calcAreaBadge');
+            if (calcAreaBadge) calcAreaBadge.textContent = m2.toLocaleString('id-ID');
+
+            // Trigger calculation
+            calculateTeasan();
+        }
+
+        // Calculate Harvest / Tebasan Estimations
+        function calculateTeasan() {
+            const m2 = latLngs.length >= 3 ? computeSphericalPolygonArea(latLngs) : 0;
+            const ubin = m2 / 14.0625;
+            
+            const ubinanWeight = parseFloat(document.getElementById('ubinanWeight')?.value) || 4.5;
+            const shrinkagePct = parseFloat(document.getElementById('shrinkagePct')?.value) || 10;
+            const grainPrice = parseFloat(document.getElementById('grainPrice')?.value) || 6500;
+            const harvestCost = parseFloat(document.getElementById('harvestCost')?.value) || 600;
+            const marginPct = parseFloat(document.getElementById('marginSlider')?.value) || 15;
+
+            // Est Yield: Each ubin sample weight represents the yield of 1 ubin (14.0625 m2)
+            const rawYieldKg = ubin * ubinanWeight;
+            const netYieldKg = rawYieldKg * (1 - shrinkagePct / 100);
+            const netKwintal = netYieldKg / 100;
+
+            const grossValue = netYieldKg * grainPrice;
+            const totalHarvestCost = netYieldKg * harvestCost;
+            
+            // Maximum Offer Price = Gross Value - Harvesting Cost - Penebas Margin
+            const profitMarginValue = grossValue * (marginPct / 100);
+            const maxOfferPrice = grossValue - totalHarvestCost - profitMarginValue;
+
+            // Update Calculator UI
+            const estTonase = document.getElementById('estTonase');
+            const estKwintal = document.getElementById('estKwintal');
+            const estGrossValue = document.getElementById('estGrossValue');
+            const estOfferPrice = document.getElementById('estOfferPrice');
+
+            if (estTonase) estTonase.textContent = Math.round(netYieldKg).toLocaleString('id-ID');
+            if (estKwintal) estKwintal.textContent = netKwintal.toFixed(1);
+            if (estGrossValue) estGrossValue.textContent = 'Rp ' + Math.round(grossValue).toLocaleString('id-ID');
+            if (estOfferPrice) estOfferPrice.textContent = 'Rp ' + Math.max(0, Math.round(maxOfferPrice)).toLocaleString('id-ID');
+        }
+
+        // Load Sample Polygon (Example Field in Central Java)
+        function loadSamplePolygon() {
+            clearPolygon();
+            const center = map.getCenter();
+            const offset = 0.0008;
+            const samplePoints = [
+                L.latLng(center.lat + offset, center.lng - offset),
+                L.latLng(center.lat + offset, center.lng + offset),
+                L.latLng(center.lat - offset, center.lng + offset),
+                L.latLng(center.lat - offset, center.lng - offset)
+            ];
+            samplePoints.forEach(pt => addVertex(pt));
+            map.fitBounds(L.polygon(latLngs).getBounds(), { padding: [50, 50] });
+            showToast("Contoh lahan sawah dimuat");
+        }
+
+        // GPS Location Finder
+        function locateUser() {
+            if (!navigator.geolocation) {
+                showToast("GPS tidak didukung perangkat ini");
+                return;
+            }
+            showToast("Mencari lokasi GPS akurat...");
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    map.setView([lat, lng], 18);
+                    L.marker([lat, lng], {
+                        icon: L.divIcon({
+                            className: 'bg-[#0E533B] w-4 h-4 rounded-full border-2 border-[#E0F2FE] shadow-lg',
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
+                        })
+                    }).addTo(map).bindPopup("Lokasi Anda Saat Ini").openPopup();
+                    showToast("Lokasi ditemukan!");
+                },
+                (err) => {
+                    showToast("Gagal mendeteksi lokasi GPS");
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // Walk GPS (Record Path while walking)
+        function toggleWalkGps() {
+            const btn = document.getElementById('walkGpsBtn');
+            if (!isWalkingMode) {
+                if (!navigator.geolocation) {
+                    showToast("GPS tidak didukung");
+                    return;
+                }
+                isWalkingMode = true;
+                if (btn) {
+                    btn.classList.add('bg-[#064E3B]', 'text-[#E0F2FE]');
+                    btn.innerHTML = '<i class="fa-solid fa-stop"></i> Berhenti Rekam';
+                }
+                showToast("Perekaman jalan GPS aktif. Berjalanlah mengelilingi sawah.");
+                watchId = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+                        addVertex(latlng);
+                        map.setView(latlng);
+                    },
+                    (err) => { console.error(err); },
+                    { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+                );
+            } else {
+                isWalkingMode = false;
+                if (watchId !== null) {
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                }
+                if (btn) {
+                    btn.classList.remove('bg-[#064E3B]', 'text-[#E0F2FE]');
+                    btn.innerHTML = '<i class="fa-solid fa-person-walking text-[#0E533B]"></i> Rekam Jalan';
+                }
+                showToast("Perekaman jalan selesai.");
+            }
+        }
+
+        // Toggle Grid Lines on Map
+        function toggleGrid() {
+            isGridOn = !isGridOn;
+            const btn = document.getElementById('toggleGridBtn');
+            if (isGridOn) {
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-border-all text-[#0E533B]"></i> Grid: ON';
+                showToast("Grid ubinan diaktifkan");
+            } else {
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-border-all text-slate-400"></i> Grid: OFF';
+                showToast("Grid ubinan disembunyikan");
+            }
+        }
+
+        // Execute Location Search via Nominatim
+        function executeSearch() {
+            const query = document.getElementById('searchInput')?.value;
+            if (!query) {
+                showToast("Masukkan nama lokasi terlebih dahulu");
+                return;
+            }
+            showToast("Mencari lokasi...");
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Indonesia')}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        const lat = parseFloat(data[0].lat);
+                        const lon = parseFloat(data[0].lon);
+                        map.setView([lat, lon], 16);
+                        showToast("Lokasi ditemukan: " + data[0].display_name.split(',')[0]);
+                    } else {
+                        showToast("Lokasi tidak ditemukan");
+                    }
+                })
+                .catch(err => {
+                    showToast("Kesalahan jaringan saat mencari");
+                });
+        }
+
+        // Save Current Record to LocalStorage
+        function saveRecord() {
+            const m2 = latLngs.length >= 3 ? computeSphericalPolygonArea(latLngs) : 0;
+            if (m2 <= 0) {
+                showToast("Belum ada area lahan yang diukur!");
+                return;
+            }
+            const farmerName = document.getElementById('farmerName')?.value || 'Tanpa Nama / Petak Umum';
+            const ubin = m2 / 14.0625;
+            const estOfferPrice = document.getElementById('estOfferPrice')?.textContent || 'Rp 0';
+            const estTonase = document.getElementById('estTonase')?.textContent || '0';
+
+            const record = {
+                id: Date.now(),
+                date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
+                farmerName: farmerName,
+                m2: Math.round(m2),
+                ubin: ubin.toFixed(1),
+                tonase: estTonase,
+                offerPrice: estOfferPrice
+            };
+
+            savedRecords.unshift(record);
+            localStorage.setItem('sabin_records', JSON.stringify(savedRecords));
+            renderHistory();
+            showToast("Riwayat ukur & tebasan berhasil disimpan!");
+            switchTab('page-riwayat');
+        }
+
+        // Render History List
+        function renderHistory() {
+            const listEl = document.getElementById('historyList');
+            const badgeEl = document.getElementById('historyCountBadge');
+            
+            if (savedRecords.length > 0) {
+                if (badgeEl) {
+                    badgeEl.textContent = savedRecords.length;
+                    badgeEl.classList.remove('hidden');
+                }
+                if (listEl) {
+                    listEl.innerHTML = savedRecords.map(rec => `
+                        <div class="bg-[#FEF08A] border border-slate-300 p-3 rounded-xl flex items-center justify-between gap-2 shadow-xs">
+                            <div class="space-y-0.5">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-[#064E3B] text-xs">${rec.farmerName}</span>
+                                    <span class="text-[10px] text-slate-500">${rec.date}</span>
+                                </div>
+                                <p class="text-[11px] text-[#064E3B]">Luas: <b>${rec.m2.toLocaleString('id-ID')} m²</b> (${rec.ubin} ubin) • Est: <b>${rec.tonase} Kg</b></p>
+                                <p class="text-xs font-extrabold text-[#0E533B]">Tawaran Tebas: ${rec.offerPrice}</p>
+                            </div>
+                            <button onclick="deleteRecord(${rec.id})" class="text-slate-400 hover:text-red-500 p-2">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    `).join('');
+                }
+            } else {
+                if (badgeEl) badgeEl.classList.add('hidden');
+                if (listEl) {
+                    listEl.innerHTML = `<p class="text-slate-400 text-center py-8 italic">Belum ada data lahan yang disimpan.</p>`;
+                }
+            }
+        }
+
+        // Delete Single Record
+        function deleteRecord(id) {
+            savedRecords = savedRecords.filter(r => r.id !== id);
+            localStorage.setItem('sabin_records', JSON.stringify(savedRecords));
+            renderHistory();
+            showToast("Riwayat dihapus");
+        }
+
+        // Clear All History
+        function clearHistory() {
+            if (confirm("Hapus seluruh riwayat tersimpan?")) {
+                savedRecords = [];
+                localStorage.removeItem('sabin_records');
+                renderHistory();
+                showToast("Semua riwayat dihapus");
+            }
+        }
+
+        // Copy WhatsApp Summary
+        function copyWhatsAppSummary() {
+            const m2 = latLngs.length >= 3 ? computeSphericalPolygonArea(latLngs) : 0;
+            const ubin = m2 / 14.0625;
+            const farmerName = document.getElementById('farmerName')?.value || 'Petak Sawah';
+            const tonase = document.getElementById('estTonase')?.textContent || '0';
+            const offerPrice = document.getElementById('estOfferPrice')?.textContent || 'Rp 0';
+            const grainPrice = document.getElementById('grainPrice')?.value || '0';
+
+            const text = `🌾 *HASIL UKUR & ESTIMASI TEBASAN SABIN T93* 🌾\n\n` +
+                         `👤 Petak / Pemilik: *${farmerName}*\n` +
+                         `📐 Luas Lahan: *${Math.round(m2).toLocaleString('id-ID')} m²* (${ubin.toFixed(1)} ubin)\n` +
+                         `⚖️ Est. Gabah Bersih: *${tonase} Kg*\n` +
+                         `💰 Harga Acuan Gabah: Rp ${parseInt(grainPrice).toLocaleString('id-ID')}/Kg\n` +
+                         `🏷️ *Rekomendasi Harga Tebas: ${offerPrice}*\n\n` +
+                         `_Dihitung menggunakan Aplikasi Sabin T93_`;
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast("Ringkasan disalin ke clipboard!");
+                }).catch(() => {
+                    fallbackCopyText(text);
+                });
+            } else {
+                fallbackCopyText(text);
+            }
+        }
+
+        // Fallback Copy for iFrame constraints
+        function fallbackCopyText(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast("Ringkasan disalin ke clipboard!");
+            } catch (err) {
+                showToast("Gagal menyalin teks");
+            }
+            document.body.removeChild(textArea);
+        }
+
+        // PWA Service Worker & Manifest Setup
+        function setupPwa() {
+            const manifestData = {
+                "name": "Sabin T93 - Pengukur Luas Lahan & Estimasi Panen",
+                "short_name": "Sabin T93",
+                "start_url": "./",
+                "display": "standalone",
+                "background_color": "#E0F2FE",
+                "theme_color": "#0E533B",
+                "icons": [
+                    {
+                        "src": "https://placehold.co/192x192/0E533B/FEF08A?text=Sabin",
+                        "sizes": "192x192",
+                        "type": "image/png"
+                    },
+                    {
+                        "src": "https://placehold.co/512x512/0E533B/FEF08A?text=Sabin",
+                        "sizes": "512x512",
+                        "type": "image/png"
+                    }
+                ]
+            };
+            const stringBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/json' });
+            const manifestUrl = URL.createObjectURL(stringBlob);
+            const linkEl = document.getElementById('pwaManifestLink');
+            if (linkEl) linkEl.setAttribute('href', manifestUrl);
+
+            // Register Service Worker if supported
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    const swCode = `self.addEventListener('fetch', function(e) { e.respondWith(fetch(e.request).catch(() => caches.match(e.request))); });`;
+                    const swBlob = new Blob([swCode], { type: 'application/javascript' });
+                    const swUrl = URL.createObjectURL(swBlob);
+                    navigator.serviceWorker.register(swUrl).catch(err => console.log('SW registration failed'));
+                });
+            }
+
+            // PWA install prompt button
+            let deferredPrompt;
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+                const installBtn = document.getElementById('installPwaBtn');
+                if (installBtn) installBtn.classList.remove('hidden');
+                const bannerBtn = document.getElementById('pwaBannerBtn');
+                if (bannerBtn) {
+                    bannerBtn.addEventListener('click', () => {
+                        deferredPrompt.prompt();
+                        deferredPrompt.userChoice.then((choiceResult) => {
+                            if (choiceResult.outcome === 'accepted') {
+                                console.log('User accepted the install prompt');
+                            }
+                            deferredPrompt = null;
+                        });
+                    });
+                }
+            });
+
+            const pwaBannerBtn = document.getElementById('pwaBannerBtn');
+            if (pwaBannerBtn && !window.matchMedia('(display-mode: standalone)').matches) {
+                pwaBannerBtn.addEventListener('click', () => {
+                    const modal = document.getElementById('pwaModal');
+                    if (modal) modal.classList.remove('hidden');
+                });
+            }
+        }
+    </script>
+</body>
+</html>
