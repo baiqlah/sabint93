@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#000080">
+    <meta name="theme-color" content="#0E533B">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -463,10 +463,13 @@
         let latLngs = [];
         let markers = [];
         let gridLayer = null;
+        let userLocationMarker = null;
         let isGridOn = true;
         let isWalkingMode = false;
         let watchId = null;
         let savedRecords = JSON.parse(localStorage.getItem('sabin_records') || '[]');
+        let pendingDeleteId = null;
+        let pendingDeleteTimeout = null;
 
         // Switch Tab Functionality
         function switchTab(targetId) {
@@ -526,11 +529,11 @@
 
         // Initialize Map on Load
         window.onload = function() {
-            // Initialize Leaflet Map centered in Central Java with maxZoom 22
+            // Initialize Leaflet Map centered at -7.4727041, 110.8920439 with maxZoom 22
             map = L.map('map', {
                 zoomControl: false,
                 maxZoom: 22
-            }).setView([-7.1507, 110.1403], 15);
+            }).setView([-7.4727041, 110.8920439], 16);
 
             // Add Zoom Control to Top Right
             L.control.zoom({ position: 'topright' }).addTo(map);
@@ -623,49 +626,68 @@
             // PWA install banner setup
             setupPwa();
 
+            // Monitor status koneksi Online/Offline secara real-time
+            updateNetworkStatus();
+            window.addEventListener('online', updateNetworkStatus);
+            window.addEventListener('offline', updateNetworkStatus);
+
             // Render History
             renderHistory();
         };
 
-        // Add Vertex to Polygon
+        // Update Network Status Badge
+        function updateNetworkStatus() {
+            const badge = document.getElementById('networkStatusBadge');
+            if (!badge) return;
+            if (navigator.onLine) {
+                badge.textContent = 'Online';
+                badge.className = 'bg-[#FEF08A] text-[#064E3B] text-[9px] px-1.5 py-0.5 rounded-md font-bold';
+            } else {
+                badge.textContent = 'Offline';
+                badge.className = 'bg-[#EF4444] text-[#E0F2FE] text-[9px] px-1.5 py-0.5 rounded-md font-bold';
+                showToast("Mode Offline: Perhitungan tetap dapat digunakan");
+            }
+        }
+
+        // Add Vertex to Map & Polygon
         function addVertex(latlng) {
-            latLngs.push(latLng);
+            latLngs.push(latlng);
+
+            const vertexIcon = L.divIcon({
+                className: 'vertex-marker',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+
             const marker = L.marker(latlng, {
-                icon: L.divIcon({
-                    className: 'vertex-marker',
-                    iconSize: [14, 14],
-                    iconAnchor: [7, 7]
-                }),
+                icon: vertexIcon,
                 draggable: true
             }).addTo(map);
 
-            marker.on('click', function(e) {
-                L.DomEvent.stopPropagation(e);
-                removeVertex(marker);
-            });
-
-            marker.on('drag', function() {
+            // Update polygon when marker is dragged
+            marker.on('drag', function(e) {
                 const idx = markers.indexOf(marker);
                 if (idx !== -1) {
-                    latLngs[idx] = marker.getLatLng();
+                    latLngs[idx] = e.target.getLatLng();
                     updatePolygon();
+                }
+            });
+
+            // Remove vertex when marker is clicked
+            marker.on('click', function(e) {
+                L.DomEvent.stopPropagation(e);
+                const idx = markers.indexOf(marker);
+                if (idx !== -1) {
+                    map.removeLayer(marker);
+                    markers.splice(idx, 1);
+                    latLngs.splice(idx, 1);
+                    updatePolygon();
+                    showToast("Titik sudut dihapus");
                 }
             });
 
             markers.push(marker);
             updatePolygon();
-        }
-
-        // Remove Single Vertex
-        function removeVertex(marker) {
-            const idx = markers.indexOf(marker);
-            if (idx !== -1) {
-                map.removeLayer(marker);
-                markers.splice(idx, 1);
-                latLngs.splice(idx, 1);
-                updatePolygon();
-                showToast("Titik koordinat dihapus");
-            }
         }
 
         // Undo Last Vertex
@@ -694,6 +716,10 @@
                 map.removeLayer(polygonLayer);
                 polygonLayer = null;
             }
+            if (gridLayer) {
+                map.removeLayer(gridLayer);
+                gridLayer = null;
+            }
 
             if (latLngs.length >= 3) {
                 polygonLayer = L.polygon(latLngs, {
@@ -702,183 +728,72 @@
                     fillColor: '#0E533B',
                     fillOpacity: 0.35
                 }).addTo(map);
+
+                if (isGridOn) {
+                    drawUbinanGrid(polygonLayer.getBounds());
+                }
             }
 
             const areaM2 = latLngs.length >= 3 ? computeSphericalPolygonArea(latLngs) : 0;
             updateAllMeasurements(areaM2);
         }
 
-        // Compute Accurate Area in Square Meters (Spherical excess)
-        function computeSphericalPolygonArea(coords) {
-            if (coords.length < 3) return 0;
-            const radius = 6378137; // Earth radius in meters
-            let total = 0;
-            for (let i = 0; i < coords.length; i++) {
-                const p1 = coords[i];
-                const p2 = coords[(i + 1) % coords.length];
-                const p1LatRad = (p1.lat * Math.PI) / 180;
-                const p2LatRad = (p2.lat * Math.PI) / 180;
-                const p2LngRad = (p2.lng * Math.PI) / 180;
-                const p1LngRad = (p1.lng * Math.PI) / 180;
-                total += (p2LngRad - p1LngRad) * (2 + Math.sin(p1LatRad) + Math.sin(p2LatRad));
-            }
-            let area = Math.abs((total * radius * radius) / 2.0);
-            return Math.round(area * 100) / 100;
-        }
-
-        // Update All UI Area Labels
-        function updateAllMeasurements(m2) {
-            const ubin = m2 / 14.0625;
-            const hektar = m2 / 10000;
-            const bahu = m2 / 7096.5;
-            const petakUbinan = m2 / 6.25;
-
-            // Map Badge
-            const mapQuickM2 = document.getElementById('mapQuickM2');
-            const mapQuickUbin = document.getElementById('mapQuickUbin');
-            if (mapQuickM2) mapQuickM2.textContent = m2.toLocaleString('id-ID');
-            if (mapQuickUbin) mapQuickUbin.textContent = ubin.toFixed(1);
-
-            // Top Header Badge
-            const badgeTopM2 = document.getElementById('badgeTopM2');
-            if (badgeTopM2) badgeTopM2.textContent = m2 > 10000 ? (hektar.toFixed(2) + ' ha') : (Math.round(m2) + ' m²');
-
-            // Conversion Page
-            const resM2 = document.getElementById('resM2');
-            const vertexCountLabel = document.getElementById('vertexCountLabel');
-            const resUbin = document.getElementById('resUbin');
-            const resHektar = document.getElementById('resHektar');
-            const resBahu = document.getElementById('resBahu');
-            const resPetakUbinan = document.getElementById('resPetakUbinan');
-
-            if (resM2) resM2.textContent = m2.toLocaleString('id-ID');
-            if (vertexCountLabel) vertexCountLabel.textContent = latLngs.length;
-            if (resUbin) resUbin.textContent = ubin.toFixed(1);
-            if (resHektar) resHektar.textContent = hektar.toFixed(4);
-            if (resBahu) resBahu.textContent = bahu.toFixed(3);
-            if (resPetakUbinan) resPetakUbinan.textContent = Math.round(petakUbinan);
-
-            // Calculator Page Badge
-            const calcAreaBadge = document.getElementById('calcAreaBadge');
-            if (calcAreaBadge) calcAreaBadge.textContent = m2.toLocaleString('id-ID');
-
-            // Trigger calculation
-            calculateTeasan();
-        }
-
-        // Calculate Harvest / Tebasan Estimations
-        function calculateTeasan() {
-            const m2 = latLngs.length >= 3 ? computeSphericalPolygonArea(latLngs) : 0;
-            const ubin = m2 / 14.0625;
+        // Draw Ubinan Grid Lines with 0.000009 interval clipped inside a 10 m² circle
+        function drawUbinanGrid(bounds) {
+            gridLayer = L.layerGroup().addTo(map);
+            const center = bounds.getCenter();
+            const step = 0.000009; // Interval grid 0,000009 derajat (~1 meter)
             
-            const ubinanWeight = parseFloat(document.getElementById('ubinanWeight')?.value) || 4.5;
-            const shrinkagePct = parseFloat(document.getElementById('shrinkagePct')?.value) || 10;
-            const grainPrice = parseFloat(document.getElementById('grainPrice')?.value) || 6500;
-            const harvestCost = parseFloat(document.getElementById('harvestCost')?.value) || 600;
-            const marginPct = parseFloat(document.getElementById('marginSlider')?.value) || 15;
+            // Area 10 m² => Luas = π * r² => r = sqrt(10 / π) ≈ 1.784 meter
+            const radiusMeters = Math.sqrt(10 / Math.PI);
+            const metersPerDegLat = 111320;
+            const metersPerDegLng = 111320 * Math.cos(center.lat * Math.PI / 180);
 
-            // Est Yield: Each ubin sample weight represents the yield of 1 ubin (14.0625 m2)
-            const rawYieldKg = ubin * ubinanWeight;
-            const netYieldKg = rawYieldKg * (1 - shrinkagePct / 100);
-            const netKwintal = netYieldKg / 100;
+            const latOffset = radiusMeters / metersPerDegLat;
+            const lngOffset = radiusMeters / metersPerDegLng;
 
-            const grossValue = netYieldKg * grainPrice;
-            const totalHarvestCost = netYieldKg * harvestCost;
-            
-            // Maximum Offer Price = Gross Value - Harvesting Cost - Penebas Margin
-            const profitMarginValue = grossValue * (marginPct / 100);
-            const maxOfferPrice = grossValue - totalHarvestCost - profitMarginValue;
+            // Lingkaran batas area radius 10 m² di titik tengah lahan
+            L.circle(center, {
+                radius: radiusMeters,
+                color: '#FEF08A',
+                weight: 1.5,
+                dashArray: '3, 3',
+                fillColor: '#FEF08A',
+                fillOpacity: 0.15
+            }).addTo(gridLayer);
 
-            // Update Calculator UI
-            const estTonase = document.getElementById('estTonase');
-            const estKwintal = document.getElementById('estKwintal');
-            const estGrossValue = document.getElementById('estGrossValue');
-            const estOfferPrice = document.getElementById('estOfferPrice');
-
-            if (estTonase) estTonase.textContent = Math.round(netYieldKg).toLocaleString('id-ID');
-            if (estKwintal) estKwintal.textContent = netKwintal.toFixed(1);
-            if (estGrossValue) estGrossValue.textContent = 'Rp ' + Math.round(grossValue).toLocaleString('id-ID');
-            if (estOfferPrice) estOfferPrice.textContent = 'Rp ' + Math.max(0, Math.round(maxOfferPrice)).toLocaleString('id-ID');
-        }
-
-        // Load Sample Polygon (Example Field in Central Java)
-        function loadSamplePolygon() {
-            clearPolygon();
-            const center = map.getCenter();
-            const offset = 0.0008;
-            const samplePoints = [
-                L.latLng(center.lat + offset, center.lng - offset),
-                L.latLng(center.lat + offset, center.lng + offset),
-                L.latLng(center.lat - offset, center.lng + offset),
-                L.latLng(center.lat - offset, center.lng - offset)
-            ];
-            samplePoints.forEach(pt => addVertex(pt));
-            map.fitBounds(L.polygon(latLngs).getBounds(), { padding: [50, 50] });
-            showToast("Contoh lahan sawah dimuat");
-        }
-
-        // GPS Location Finder
-        function locateUser() {
-            if (!navigator.geolocation) {
-                showToast("GPS tidak didukung perangkat ini");
-                return;
+            // Garis horizontal terpotong rapi di dalam keliling lingkaran (x² + y² <= r²)
+            for (let dLat = -latOffset; dLat <= latOffset; dLat += step) {
+                const yMeters = dLat * metersPerDegLat;
+                const remSq = radiusMeters * radiusMeters - yMeters * yMeters;
+                if (remSq > 0) {
+                    const xSpanDeg = Math.sqrt(remSq) / metersPerDegLng;
+                    L.polyline([
+                        [center.lat + dLat, center.lng - xSpanDeg],
+                        [center.lat + dLat, center.lng + xSpanDeg]
+                    ], {
+                        color: '#FEF08A',
+                        weight: 1,
+                        opacity: 0.9
+                    }).addTo(gridLayer);
+                }
             }
-            showToast("Mencari lokasi GPS akurat...");
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    map.setView([lat, lng], 18);
-                    L.marker([lat, lng], {
-                        icon: L.divIcon({
-                            className: 'bg-[#0E533B] w-4 h-4 rounded-full border-2 border-[#E0F2FE] shadow-lg',
-                            iconSize: [16, 16],
-                            iconAnchor: [8, 8]
-                        })
-                    }).addTo(map).bindPopup("Lokasi Anda Saat Ini").openPopup();
-                    showToast("Lokasi ditemukan!");
-                },
-                (err) => {
-                    showToast("Gagal mendeteksi lokasi GPS");
-                },
-                { enableHighAccuracy: true, timeout: 10000 }
-            );
-        }
 
-        // Walk GPS (Record Path while walking)
-        function toggleWalkGps() {
-            const btn = document.getElementById('walkGpsBtn');
-            if (!isWalkingMode) {
-                if (!navigator.geolocation) {
-                    showToast("GPS tidak didukung");
-                    return;
+            // Garis vertikal terpotong rapi di dalam keliling lingkaran (x² + y² <= r²)
+            for (let dLng = -lngOffset; dLng <= lngOffset; dLng += step) {
+                const xMeters = dLng * metersPerDegLng;
+                const remSq = radiusMeters * radiusMeters - xMeters * xMeters;
+                if (remSq > 0) {
+                    const ySpanDeg = Math.sqrt(remSq) / metersPerDegLat;
+                    L.polyline([
+                        [center.lat - ySpanDeg, center.lng + dLng],
+                        [center.lat + ySpanDeg, center.lng + dLng]
+                    ], {
+                        color: '#FEF08A',
+                        weight: 1,
+                        opacity: 0.9
+                    }).addTo(gridLayer);
                 }
-                isWalkingMode = true;
-                if (btn) {
-                    btn.classList.add('bg-[#064E3B]', 'text-[#E0F2FE]');
-                    btn.innerHTML = '<i class="fa-solid fa-stop"></i> Berhenti Rekam';
-                }
-                showToast("Perekaman jalan GPS aktif. Berjalanlah mengelilingi sawah.");
-                watchId = navigator.geolocation.watchPosition(
-                    (pos) => {
-                        const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-                        addVertex(latlng);
-                        map.setView(latlng);
-                    },
-                    (err) => { console.error(err); },
-                    { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
-                );
-            } else {
-                isWalkingMode = false;
-                if (watchId !== null) {
-                    navigator.geolocation.clearWatch(watchId);
-                    watchId = null;
-                }
-                if (btn) {
-                    btn.classList.remove('bg-[#064E3B]', 'text-[#E0F2FE]');
-                    btn.innerHTML = '<i class="fa-solid fa-person-walking text-[#0E533B]"></i> Rekam Jalan';
-                }
-                showToast("Perekaman jalan selesai.");
             }
         }
 
@@ -888,11 +803,12 @@
             const btn = document.getElementById('toggleGridBtn');
             if (isGridOn) {
                 if (btn) btn.innerHTML = '<i class="fa-solid fa-border-all text-[#0E533B]"></i> Grid: ON';
-                showToast("Grid ubinan diaktifkan");
+                showToast("Grid ubinan 10 m² diaktifkan");
             } else {
                 if (btn) btn.innerHTML = '<i class="fa-solid fa-border-all text-slate-400"></i> Grid: OFF';
                 showToast("Grid ubinan disembunyikan");
             }
+            updatePolygon();
         }
 
         // Execute Location Search via Nominatim
@@ -960,7 +876,9 @@
                     badgeEl.classList.remove('hidden');
                 }
                 if (listEl) {
-                    listEl.innerHTML = savedRecords.map(rec => `
+                    listEl.innerHTML = savedRecords.map(rec => {
+                        const isConfirming = pendingDeleteId === rec.id;
+                        return `
                         <div class="bg-[#FEF08A] border border-slate-300 p-3 rounded-xl flex items-center justify-between gap-2 shadow-xs">
                             <div class="space-y-0.5">
                                 <div class="flex items-center gap-2">
@@ -970,11 +888,11 @@
                                 <p class="text-[11px] text-[#064E3B]">Luas: <b>${rec.m2.toLocaleString('id-ID')} m²</b> (${rec.ubin} ubin) • Est: <b>${rec.tonase} Kg</b></p>
                                 <p class="text-xs font-extrabold text-[#0E533B]">Tawaran Tebas: ${rec.offerPrice}</p>
                             </div>
-                            <button onclick="deleteRecord(${rec.id})" class="text-slate-400 hover:text-red-500 p-2">
-                                <i class="fa-solid fa-trash-can"></i>
+                            <button onclick="deleteRecord(${rec.id})" class="${isConfirming ? 'bg-[#EF4444] text-[#E0F2FE] px-2.5 py-1.5 rounded-lg text-[10px] font-bold' : 'text-slate-400 hover:text-red-500 p-2'} transition shrink-0">
+                                ${isConfirming ? 'Hapus?' : '<i class="fa-solid fa-trash-can"></i>'}
                             </button>
                         </div>
-                    `).join('');
+                    `}).join('');
                 }
             } else {
                 if (badgeEl) badgeEl.classList.add('hidden');
@@ -984,17 +902,210 @@
             }
         }
 
-        // Delete Single Record
+        // Delete Single Record with 2-tap confirmation
         function deleteRecord(id) {
+            if (pendingDeleteId !== id) {
+                pendingDeleteId = id;
+                renderHistory();
+                showToast("Ketuk tombol 'Hapus?' sekali lagi untuk konfirmasi");
+                clearTimeout(pendingDeleteTimeout);
+                pendingDeleteTimeout = setTimeout(() => {
+                    pendingDeleteId = null;
+                    renderHistory();
+                }, 3000);
+                return;
+            }
+            clearTimeout(pendingDeleteTimeout);
+            pendingDeleteId = null;
             savedRecords = savedRecords.filter(r => r.id !== id);
             localStorage.setItem('sabin_records', JSON.stringify(savedRecords));
             renderHistory();
-            showToast("Riwayat dihapus");
+            showToast("Catatan riwayat dihapus");
         }
 
-        // Clear All History
+        // Compute Spherical Polygon Area (m²)
+        function computeSphericalPolygonArea(coords) {
+            const R = 6378137;
+            let area = 0;
+            if (coords.length > 2) {
+                for (let i = 0; i < coords.length; i++) {
+                    const p1 = coords[i];
+                    const p2 = coords[(i + 1) % coords.length];
+                    const dLng = (p2.lng - p1.lng) * Math.PI / 180;
+                    const lat1 = p1.lat * Math.PI / 180;
+                    const lat2 = p2.lat * Math.PI / 180;
+                    area += dLng * (2 + Math.sin(lat1) + Math.sin(lat2));
+                }
+                area = Math.abs(area * R * R / 2);
+            }
+            return area;
+        }
+
+        // Update All Area Displays & Trigger Calculator
+        function updateAllMeasurements(areaM2) {
+            const roundedM2 = Math.round(areaM2);
+            const ubin = areaM2 / 14.0625;
+            const hektar = areaM2 / 10000;
+            const bahu = areaM2 / 7096.5;
+            const petakUbinan = areaM2 / 6.25;
+
+            const setText = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val;
+            };
+
+            setText('badgeTopM2', roundedM2.toLocaleString('id-ID') + ' m²');
+            setText('mapQuickM2', roundedM2.toLocaleString('id-ID'));
+            setText('mapQuickUbin', ubin.toFixed(1));
+            setText('resM2', roundedM2.toLocaleString('id-ID'));
+            setText('vertexCountLabel', latLngs.length);
+            setText('resUbin', ubin.toFixed(1));
+            setText('resHektar', hektar.toFixed(3));
+            setText('resBahu', bahu.toFixed(3));
+            setText('resPetakUbinan', Math.round(petakUbinan).toLocaleString('id-ID'));
+            setText('calcAreaBadge', roundedM2.toLocaleString('id-ID'));
+
+            calculateTeasan();
+        }
+
+        // Calculate Harvest Tonnage & Tebasan Offer Price
+        function calculateTeasan() {
+            const areaM2 = latLngs.length >= 3 ? computeSphericalPolygonArea(latLngs) : 0;
+            const ubinanWeight = parseFloat(document.getElementById('ubinanWeight')?.value) || 0;
+            const shrinkagePct = parseFloat(document.getElementById('shrinkagePct')?.value) || 0;
+            const grainPrice = parseFloat(document.getElementById('grainPrice')?.value) || 0;
+            const harvestCost = parseFloat(document.getElementById('harvestCost')?.value) || 0;
+            const marginPct = parseFloat(document.getElementById('marginSlider')?.value) || 0;
+
+            const grossKg = (areaM2 / 6.25) * ubinanWeight;
+            const netKg = grossKg * (1 - (shrinkagePct / 100));
+            const kwintal = netKg / 100;
+
+            const grossValue = netKg * grainPrice;
+            const totalHarvestCost = netKg * harvestCost;
+            const targetMarginValue = grossValue * (marginPct / 100);
+            const maxOffer = Math.max(0, grossValue - totalHarvestCost - targetMarginValue);
+
+            const setText = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val;
+            };
+
+            setText('estTonase', Math.round(netKg).toLocaleString('id-ID'));
+            setText('estKwintal', kwintal.toFixed(1));
+            setText('estGrossValue', 'Rp ' + Math.round(grossValue).toLocaleString('id-ID'));
+            setText('estOfferPrice', 'Rp ' + Math.round(maxOffer).toLocaleString('id-ID'));
+        }
+
+        // Load Sample Polygon
+        function loadSamplePolygon() {
+            clearPolygon();
+            const center = L.latLng(-7.4727041, 110.8920439);
+            const d = 0.00045;
+            const pts = [
+                L.latLng(center.lat + d, center.lng - d),
+                L.latLng(center.lat + d, center.lng + d),
+                L.latLng(center.lat - d, center.lng + d),
+                L.latLng(center.lat - d, center.lng - d)
+            ];
+            pts.forEach(pt => addVertex(pt));
+            if (map) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40] });
+            showToast("Contoh bidang lahan dimuat");
+        }
+
+        // Locate User via GPS
+        function locateUser() {
+            if (!navigator.geolocation) {
+                showToast("Browser tidak mendukung GPS");
+                return;
+            }
+            showToast("Mencari titik GPS...");
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+                    if (map) {
+                        map.setView(latlng, 18);
+                        if (userLocationMarker) {
+                            map.removeLayer(userLocationMarker);
+                        }
+                        userLocationMarker = L.circleMarker(latlng, {
+                            radius: 8,
+                            fillColor: '#0E533B',
+                            color: '#FEF08A',
+                            weight: 3,
+                            opacity: 1,
+                            fillOpacity: 0.9
+                        }).addTo(map).bindPopup("Posisi Anda saat ini");
+                    }
+                    showToast("Lokasi GPS ditemukan!");
+                },
+                () => showToast("Gagal mengakses GPS. Pastikan izin lokasi aktif."),
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // Toggle Walking GPS Mode
+        function toggleWalkGps() {
+            const btn = document.getElementById('walkGpsBtn');
+            if (!isWalkingMode) {
+                if (!navigator.geolocation) {
+                    showToast("GPS tidak tersedia di perangkat ini");
+                    return;
+                }
+                isWalkingMode = true;
+                if (btn) {
+                    btn.classList.add('bg-[#0E533B]', 'text-[#E0F2FE]');
+                    btn.classList.remove('bg-[#FEF08A]', 'text-[#064E3B]');
+                    btn.innerHTML = '<i class="fa-solid fa-stop text-[#FEF08A]"></i> Stop Rekam';
+                }
+                showToast("Mode Rekam Jalan aktif: berjalanlah mengelilingi pematang sawah");
+                watchId = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        const newPt = L.latLng(pos.coords.latitude, pos.coords.longitude);
+                        if (latLngs.length === 0 || newPt.distanceTo(latLngs[latLngs.length - 1]) >= 4) {
+                            addVertex(newPt);
+                            if (map) map.panTo(newPt);
+                        }
+                    },
+                    () => showToast("Sinyal GPS terganggu"),
+                    { enableHighAccuracy: true, maximumAge: 1000 }
+                );
+            } else {
+                isWalkingMode = false;
+                if (watchId !== null) {
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                }
+                if (btn) {
+                    btn.classList.remove('bg-[#0E533B]', 'text-[#E0F2FE]');
+                    btn.classList.add('bg-[#FEF08A]', 'text-[#064E3B]');
+                    btn.innerHTML = '<i class="fa-solid fa-person-walking text-[#0E533B]"></i> Rekam Jalan';
+                }
+                showToast("Rekam jalan dihentikan");
+            }
+        }
+
+        // Clear All History (Tanpa confirm() dialog)
+        let confirmClearTimeout = null;
         function clearHistory() {
-            if (confirm("Hapus seluruh riwayat tersimpan?")) {
+            const btn = document.getElementById('clearHistoryBtn');
+            if (!btn) return;
+
+            if (btn.dataset.confirming !== 'true') {
+                btn.dataset.confirming = 'true';
+                btn.textContent = 'Yakin Hapus?';
+                btn.classList.add('ring-2', 'ring-[#FEF08A]');
+                showToast("Ketuk sekali lagi untuk menghapus semua riwayat");
+                confirmClearTimeout = setTimeout(() => {
+                    btn.dataset.confirming = 'false';
+                    btn.textContent = 'Hapus Semua';
+                    btn.classList.remove('ring-2', 'ring-[#FEF08A]');
+                }, 3500);
+            } else {
+                clearTimeout(confirmClearTimeout);
+                btn.dataset.confirming = 'false';
+                btn.textContent = 'Hapus Semua';
+                btn.classList.remove('ring-2', 'ring-[#FEF08A]');
                 savedRecords = [];
                 localStorage.removeItem('sabin_records');
                 renderHistory();
@@ -1074,42 +1185,47 @@
             const linkEl = document.getElementById('pwaManifestLink');
             if (linkEl) linkEl.setAttribute('href', manifestUrl);
 
-            // Register Service Worker if supported
+            // Register Service Worker directly (since setupPwa runs inside window.onload)
             if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                    const swCode = `self.addEventListener('fetch', function(e) { e.respondWith(fetch(e.request).catch(() => caches.match(e.request))); });`;
-                    const swBlob = new Blob([swCode], { type: 'application/javascript' });
-                    const swUrl = URL.createObjectURL(swBlob);
-                    navigator.serviceWorker.register(swUrl).catch(err => console.log('SW registration failed'));
-                });
+                const swCode = `self.addEventListener('fetch', function(e) { e.respondWith(fetch(e.request).catch(() => caches.match(e.request))); });`;
+                const swBlob = new Blob([swCode], { type: 'application/javascript' });
+                const swUrl = URL.createObjectURL(swBlob);
+                navigator.serviceWorker.register(swUrl).catch(() => {});
             }
 
             // PWA install prompt button
-            let deferredPrompt;
+            let deferredPrompt = null;
+            const installBtn = document.getElementById('installPwaBtn');
+            const bannerBtn = document.getElementById('pwaBannerBtn');
+
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
                 deferredPrompt = e;
-                const installBtn = document.getElementById('installPwaBtn');
                 if (installBtn) installBtn.classList.remove('hidden');
-                const bannerBtn = document.getElementById('pwaBannerBtn');
-                if (bannerBtn) {
-                    bannerBtn.addEventListener('click', () => {
-                        deferredPrompt.prompt();
-                        deferredPrompt.userChoice.then((choiceResult) => {
-                            if (choiceResult.outcome === 'accepted') {
-                                console.log('User accepted the install prompt');
-                            }
-                            deferredPrompt = null;
-                        });
-                    });
-                }
             });
 
-            const pwaBannerBtn = document.getElementById('pwaBannerBtn');
-            if (pwaBannerBtn && !window.matchMedia('(display-mode: standalone)').matches) {
-                pwaBannerBtn.addEventListener('click', () => {
-                    const modal = document.getElementById('pwaModal');
-                    if (modal) modal.classList.remove('hidden');
+            if (installBtn) {
+                installBtn.addEventListener('click', () => {
+                    if (deferredPrompt) {
+                        deferredPrompt.prompt();
+                        deferredPrompt.userChoice.then(() => {
+                            deferredPrompt = null;
+                        });
+                    }
+                });
+            }
+
+            if (bannerBtn && !window.matchMedia('(display-mode: standalone)').matches) {
+                bannerBtn.addEventListener('click', () => {
+                    if (deferredPrompt) {
+                        deferredPrompt.prompt();
+                        deferredPrompt.userChoice.then(() => {
+                            deferredPrompt = null;
+                        });
+                    } else {
+                        const modal = document.getElementById('pwaModal');
+                        if (modal) modal.classList.remove('hidden');
+                    }
                 });
             }
         }
