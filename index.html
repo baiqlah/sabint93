@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#0E533B">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -55,6 +55,11 @@
             width: 100%;
             border-radius: 1rem;
             z-index: 1;
+            transition: height 0.3s ease, max-height 0.3s ease;
+        }
+        body.menu-hidden #map {
+            height: calc(100vh - 235px);
+            max-height: 680px;
         }
         /* Custom Leaflet Vertex Marker */
         .vertex-marker {
@@ -76,7 +81,7 @@
 <body class="text-slate-800 font-sans antialiased min-h-screen flex flex-col items-center bg-[#E0F2FE]">
 
     <!-- Android App Shell Container (Latar Belakang Biru Langit #E0F2FE) -->
-    <div class="w-full max-w-md min-h-screen bg-[#E0F2FE] shadow-2xl flex flex-col relative pb-20 border-x border-slate-300">
+    <div id="appShell" class="w-full max-w-md min-h-screen bg-[#E0F2FE] shadow-2xl flex flex-col relative pb-20 border-x border-slate-300 transition-all duration-300">
 
         <!-- Android App Bar / Top Header (Warna Utama Deep Emerald #0E533B) -->
         <header class="bg-[#0E533B] text-[#E0F2FE] shadow-md sticky top-0 z-50 px-4 py-3 flex items-center justify-between">
@@ -85,7 +90,7 @@
                     <i class="fa-solid fa-wheat-awn text-lg"></i>
                 </div>
                 <div>
-                    <div class="flex items-center gap-1.5">
+                    <div class="flex items-center gap-1.5"> <!--93-->
                         <h1 class="text-base font-bold tracking-tight leading-tight">Sabin <span class="text-[#FEF08A]">T93</span></h1>
                         <span id="networkStatusBadge" class="bg-[#FEF08A] text-[#064E3B] text-[9px] px-1.5 py-0.5 rounded-md font-bold">Online</span>
                     </div>
@@ -93,6 +98,9 @@
                 </div>
             </div>
             <div class="flex items-center gap-1.5">
+                <button id="fullscreenBtn" onclick="toggleFullscreen()" class="bg-[#064E3B] hover:brightness-95 active:scale-95 text-[#E0F2FE] w-8 h-8 rounded-xl font-bold flex items-center justify-center transition shadow-sm border border-slate-300/40" title="Mode Layar Penuh">
+                    <i id="fullscreenIcon" class="fa-solid fa-expand text-xs text-[#FEF08A]"></i>
+                </button>
                 <button id="installPwaBtn" class="hidden bg-[#FEF08A] hover:brightness-95 active:scale-95 text-[#064E3B] text-[11px] px-2.5 py-1.5 rounded-xl font-extrabold shadow-sm flex items-center gap-1 transition" title="Install Aplikasi Sabin T93 ke HP">
                     <i class="fa-solid fa-download"></i>
                     <span>Install</span>
@@ -157,7 +165,7 @@
         </div>
 
         <!-- Toast Notification Box (Floating above Bottom Nav) -->
-        <div id="toastBox" class="fixed bottom-20 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50 hidden bg-[#064E3B] text-[#E0F2FE] px-4 py-3 rounded-2xl shadow-xl text-xs flex items-center gap-2.5 transition-all border border-[#0E533B]">
+        <div id="toastBox" class="fixed bottom-20 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50 hidden bg-[#064E3B] text-[#E0F2FE] px-4 py-3 rounded-2xl shadow-xl text-xs flex items-center gap-2.5 transition-all duration-300 border border-[#0E533B]">
             <i class="fa-solid fa-circle-info text-[#FEF08A] text-base shrink-0"></i>
             <span id="toastMessage" class="font-medium">Pesan notifikasi</span>
         </div>
@@ -182,7 +190,7 @@
                         <button id="toggleGridBtn" class="bg-[#FEF08A] active:scale-95 text-[#064E3B] py-2 px-2 rounded-xl text-[11px] font-bold shadow-xs transition flex items-center justify-center gap-1">
                             <i class="fa-solid fa-border-all text-[#0E533B]"></i> Grid: ON
                         </button>
-                        <button id="walkGpsBtn" class="bg-[#FEF08A] active:scale-95 text-[#064E3B] py-2 px-2 rounded-xl text-[11px] font-bold shadow-xs transition flex items-center justify-center gap-1">
+                        <button id="walkGpsBtn" class="bg-[#FEF08A] active:scale-95 text-[#064E3B] py-2 px-2 rounded-xl text-[11px] font-bold shadow-xs transition flex items-center justify-center gap-1"> <!--193-->
                             <i class="fa-solid fa-person-walking text-[#0E533B]"></i> Rekam Jalan
                         </button>
                         <button id="locateBtn" class="bg-[#FEF08A] active:scale-95 text-[#064E3B] py-2 px-2 rounded-xl text-[11px] font-bold shadow-xs transition flex items-center justify-center gap-1">
@@ -421,36 +429,48 @@
 
         </main>
 
+        <!-- Floating Show Menu Pill (Muncul saat Bottom Bar disembunyikan) -->
+        <button id="showBottomNavBtn" onclick="toggleBottomNav(true)" class="hidden fixed bottom-3 left-1/2 -translate-x-1/2 z-50 bg-[#0E533B]/95 backdrop-blur-md text-[#E0F2FE] px-4 py-2 rounded-full shadow-xl border border-[#FEF08A]/60 text-[11px] font-bold flex items-center gap-2 active:scale-95 transition">
+            <i class="fa-solid fa-chevron-up text-[#FEF08A]"></i>
+            <span>Tampilkan Menu</span>
+        </button>
+
         <!-- Android Bottom Navigation Bar (#D4D2CD) -->
-        <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#D4D2CD]/95 backdrop-blur-md border-t border-slate-300 shadow-[0_-4px_15px_rgba(14,83,59,0.06)] z-50 px-2 py-1.5 grid grid-cols-4">
-            <button data-target="page-map" onclick="switchTab('page-map')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B] font-bold transition">
-                <div class="nav-pill px-4 py-1 rounded-full bg-[#FEF08A] mb-0.5 transition text-[#0E533B]">
-                    <i class="fa-solid fa-map-location-dot text-sm"></i>
-                </div>
-                <span class="text-[10px] text-[#0E533B]">Peta</span>
+        <nav id="bottomNavBar" class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#D4D2CD]/95 backdrop-blur-md border-t border-slate-300 shadow-[0_-4px_15px_rgba(14,83,59,0.06)] z-50 px-2 py-1.5 transition-transform duration-300">
+            <!-- Tombol Tarik Turun untuk Sembunyikan Menu -->
+            <button onclick="toggleBottomNav(false)" class="w-full flex items-center justify-center pb-1 text-[#0E533B]/70 hover:text-[#0E533B] active:scale-95 transition" title="Sembunyikan Menu Bawah">
+                <div class="w-10 h-1 bg-[#0E533B]/35 rounded-full"></div>
             </button>
+            <div class="grid grid-cols-4">
+                <button data-target="page-map" onclick="switchTab('page-map')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B] font-bold transition">
+                    <div class="nav-pill px-4 py-1 rounded-full bg-[#FEF08A] mb-0.5 transition text-[#0E533B]">
+                        <i class="fa-solid fa-map-location-dot text-sm"></i>
+                    </div>
+                    <span class="text-[10px] text-[#0E533B]">Peta</span>
+                </button>
 
-            <button data-target="page-konversi" onclick="switchTab('page-konversi')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B]/80 font-medium transition">
-                <div class="nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]">
-                    <i class="fa-solid fa-ruler-combined text-sm"></i>
-                </div>
-                <span class="text-[10px] text-[#0E533B]">Konversi</span>
-            </button>
+                <button data-target="page-konversi" onclick="switchTab('page-konversi')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B]/80 font-medium transition">
+                    <div class="nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]">
+                        <i class="fa-solid fa-ruler-combined text-sm"></i>
+                    </div>
+                    <span class="text-[10px] text-[#0E533B]">Konversi</span>
+                </button>
 
-            <button data-target="page-kalkulator" onclick="switchTab('page-kalkulator')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B]/80 font-medium transition">
-                <div class="nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]">
-                    <i class="fa-solid fa-calculator text-sm"></i>
-                </div>
-                <span class="text-[10px] text-[#0E533B]">Kalkulator</span>
-            </button>
+                <button data-target="page-kalkulator" onclick="switchTab('page-kalkulator')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B]/80 font-medium transition">
+                    <div class="nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]">
+                        <i class="fa-solid fa-calculator text-sm"></i>
+                    </div>
+                    <span class="text-[10px] text-[#0E533B]">Kalkulator</span>
+                </button>
 
-            <button data-target="page-riwayat" onclick="switchTab('page-riwayat')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B]/80 font-medium transition relative">
-                <div class="nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]">
-                    <i class="fa-solid fa-clock-rotate-left text-sm"></i>
-                </div>
-                <span class="text-[10px] text-[#0E533B]">Riwayat</span>
-                <span id="historyCountBadge" class="hidden absolute top-1 right-5 bg-[#64748B] text-[#E0F2FE] text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">0</span>
-            </button>
+                <button data-target="page-riwayat" onclick="switchTab('page-riwayat')" class="nav-tab-btn flex flex-col items-center justify-center py-1 rounded-xl text-[#0E533B]/80 font-medium transition relative">
+                    <div class="nav-pill px-4 py-1 rounded-full bg-transparent mb-0.5 transition text-[#0E533B]">
+                        <i class="fa-solid fa-clock-rotate-left text-sm"></i>
+                    </div>
+                    <span class="text-[10px] text-[#0E533B]">Riwayat</span>
+                    <span id="historyCountBadge" class="hidden absolute top-1 right-5 bg-[#64748B] text-[#E0F2FE] text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">0</span>
+                </button>
+            </div>
         </nav>
 
     </div>
@@ -470,6 +490,76 @@
         let savedRecords = JSON.parse(localStorage.getItem('sabin_records') || '[]');
         let pendingDeleteId = null;
         let pendingDeleteTimeout = null;
+        let isBottomNavVisible = true;
+
+        // Toggle Fullscreen Mode (Layar Penuh HP)
+        function toggleFullscreen() {
+            const docEl = document.documentElement;
+            const icon = document.getElementById('fullscreenIcon');
+
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
+                if (req) {
+                    req.call(docEl).then(() => {
+                        if (icon) icon.className = 'fa-solid fa-compress text-xs text-[#FEF08A]';
+                        toggleBottomNav(false);
+                        showToast("Mode Layar Penuh aktif");
+                    }).catch(() => {
+                        toggleBottomNav(false);
+                        showToast("Menu bawah disembunyikan untuk tampilan luas");
+                    });
+                } else {
+                    toggleBottomNav(false);
+                }
+            } else {
+                const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+                if (exit) {
+                    exit.call(document).then(() => {
+                        if (icon) icon.className = 'fa-solid fa-expand text-xs text-[#FEF08A]';
+                        toggleBottomNav(true);
+                    }).catch(() => {});
+                }
+            }
+        }
+
+        // Toggle Bottom Navigation Bar (Sembunyikan / Tampilkan Menu Bawah)
+        function toggleBottomNav(show) {
+            isBottomNavVisible = typeof show === 'boolean' ? show : !isBottomNavVisible;
+            const nav = document.getElementById('bottomNavBar');
+            const showBtn = document.getElementById('showBottomNavBtn');
+            const appShell = document.getElementById('appShell');
+            const toast = document.getElementById('toastBox');
+
+            if (isBottomNavVisible) {
+                document.body.classList.remove('menu-hidden');
+                if (nav) nav.classList.remove('translate-y-full');
+                if (showBtn) showBtn.classList.add('hidden');
+                if (appShell) {
+                    appShell.classList.add('pb-20');
+                    appShell.classList.remove('pb-6');
+                }
+                if (toast) {
+                    toast.classList.add('bottom-20');
+                    toast.classList.remove('bottom-14');
+                }
+            } else {
+                document.body.classList.add('menu-hidden');
+                if (nav) nav.classList.add('translate-y-full');
+                if (showBtn) showBtn.classList.remove('hidden');
+                if (appShell) {
+                    appShell.classList.remove('pb-20');
+                    appShell.classList.add('pb-6');
+                }
+                if (toast) {
+                    toast.classList.remove('bottom-20');
+                    toast.classList.add('bottom-14');
+                }
+            }
+
+            if (map) {
+                setTimeout(() => map.invalidateSize(), 310);
+            }
+        }
 
         // Switch Tab Functionality
         function switchTab(targetId) {
@@ -554,6 +644,22 @@
             // Map click event to add vertices
             map.on('click', function(e) {
                 addVertex(e.latlng);
+            });
+
+            // Auto-hide bottom nav when user drags/pans the map on mobile
+            map.on('dragstart', function() {
+                if (isBottomNavVisible) {
+                    toggleBottomNav(false);
+                }
+            });
+
+            // Sync fullscreen icon if user exits via system back gesture
+            document.addEventListener('fullscreenchange', () => {
+                const icon = document.getElementById('fullscreenIcon');
+                if (!document.fullscreenElement && icon) {
+                    icon.className = 'fa-solid fa-expand text-xs text-[#FEF08A]';
+                }
+                if (map) setTimeout(() => map.invalidateSize(), 250);
             });
 
             // Bind UI Events Safely
@@ -723,10 +829,10 @@
 
             if (latLngs.length >= 3) {
                 polygonLayer = L.polygon(latLngs, {
-                    color: '#0E533B',
-                    weight: 3,
+                    color: '#FFFFFF',
+                    weight: 2.5,
                     fillColor: '#0E533B',
-                    fillOpacity: 0.35
+                    fillOpacity: 0.3
                 }).addTo(map);
 
                 if (isGridOn) {
@@ -738,60 +844,73 @@
             updateAllMeasurements(areaM2);
         }
 
-        // Draw Ubinan Grid Lines with 0.000009 interval clipped inside a 10 m² circle
+        // Draw 1m x 1m (0.000009 deg) Grid Lines clipped strictly inside the drawn polygon
         function drawUbinanGrid(bounds) {
+            if (!bounds || latLngs.length < 3) return;
             gridLayer = L.layerGroup().addTo(map);
-            const center = bounds.getCenter();
-            const step = 0.000009; // Interval grid 0,000009 derajat (~1 meter)
-            
-            // Area 10 m² => Luas = π * r² => r = sqrt(10 / π) ≈ 1.784 meter
-            const radiusMeters = Math.sqrt(10 / Math.PI);
-            const metersPerDegLat = 111320;
-            const metersPerDegLng = 111320 * Math.cos(center.lat * Math.PI / 180);
 
-            const latOffset = radiusMeters / metersPerDegLat;
-            const lngOffset = radiusMeters / metersPerDegLng;
+            const step = 0.000009; // Interval kotak 1m x 1m (~0,000009 derajat)
+            const south = bounds.getSouth();
+            const north = bounds.getNorth();
+            const west = bounds.getWest();
+            const east = bounds.getEast();
 
-            // Lingkaran batas area radius 10 m² di titik tengah lahan
-            L.circle(center, {
-                radius: radiusMeters,
-                color: '#FEF08A',
-                weight: 1.5,
-                dashArray: '3, 3',
-                fillColor: '#FEF08A',
-                fillOpacity: 0.15
-            }).addTo(gridLayer);
+            // Batasi jumlah garis maksimal agar perangkat tetap ringan jika lahan sangat luas (puluhan hektar)
+            const maxLines = 250;
+            const latSpan = north - south;
+            const lngSpan = east - west;
+            const latStep = Math.max(step, latSpan / maxLines);
+            const lngStep = Math.max(step, lngSpan / maxLines);
 
-            // Garis horizontal terpotong rapi di dalam keliling lingkaran (x² + y² <= r²)
-            for (let dLat = -latOffset; dLat <= latOffset; dLat += step) {
-                const yMeters = dLat * metersPerDegLat;
-                const remSq = radiusMeters * radiusMeters - yMeters * yMeters;
-                if (remSq > 0) {
-                    const xSpanDeg = Math.sqrt(remSq) / metersPerDegLng;
+            const startLat = Math.floor(south / latStep) * latStep;
+            const startLng = Math.floor(west / lngStep) * lngStep;
+
+            // Garis horizontal terpotong rapi di dalam batas poligon sawah
+            for (let lat = startLat; lat <= north; lat += latStep) {
+                const intersections = [];
+                for (let i = 0; i < latLngs.length; i++) {
+                    const p1 = latLngs[i];
+                    const p2 = latLngs[(i + 1) % latLngs.length];
+                    if ((p1.lat <= lat && p2.lat > lat) || (p2.lat <= lat && p1.lat > lat)) {
+                        const t = (lat - p1.lat) / (p2.lat - p1.lat);
+                        intersections.push(p1.lng + t * (p2.lng - p1.lng));
+                    }
+                }
+                intersections.sort((a, b) => a - b);
+                for (let k = 0; k + 1 < intersections.length; k += 2) {
                     L.polyline([
-                        [center.lat + dLat, center.lng - xSpanDeg],
-                        [center.lat + dLat, center.lng + xSpanDeg]
+                        [lat, intersections[k]],
+                        [lat, intersections[k + 1]]
                     ], {
-                        color: '#FEF08A',
+                        color: '#FACC15',
                         weight: 1,
-                        opacity: 0.9
+                        opacity: 0.85,
+                        interactive: false
                     }).addTo(gridLayer);
                 }
             }
 
-            // Garis vertikal terpotong rapi di dalam keliling lingkaran (x² + y² <= r²)
-            for (let dLng = -lngOffset; dLng <= lngOffset; dLng += step) {
-                const xMeters = dLng * metersPerDegLng;
-                const remSq = radiusMeters * radiusMeters - xMeters * xMeters;
-                if (remSq > 0) {
-                    const ySpanDeg = Math.sqrt(remSq) / metersPerDegLat;
+            // Garis vertikal terpotong rapi di dalam batas poligon sawah
+            for (let lng = startLng; lng <= east; lng += lngStep) {
+                const intersections = [];
+                for (let i = 0; i < latLngs.length; i++) {
+                    const p1 = latLngs[i];
+                    const p2 = latLngs[(i + 1) % latLngs.length];
+                    if ((p1.lng <= lng && p2.lng > lng) || (p2.lng <= lng && p1.lng > lng)) {
+                        const t = (lng - p1.lng) / (p2.lng - p1.lng);
+                        intersections.push(p1.lat + t * (p2.lat - p1.lat));
+                    }
+                }
+                intersections.sort((a, b) => a - b);
+                for (let k = 0; k + 1 < intersections.length; k += 2) {
                     L.polyline([
-                        [center.lat - ySpanDeg, center.lng + dLng],
-                        [center.lat + ySpanDeg, center.lng + dLng]
+                        [intersections[k], lng],
+                        [intersections[k + 1], lng]
                     ], {
-                        color: '#FEF08A',
+                        color: '#FACC15',
                         weight: 1,
-                        opacity: 0.9
+                        opacity: 0.85,
+                        interactive: false
                     }).addTo(gridLayer);
                 }
             }
@@ -803,10 +922,10 @@
             const btn = document.getElementById('toggleGridBtn');
             if (isGridOn) {
                 if (btn) btn.innerHTML = '<i class="fa-solid fa-border-all text-[#0E533B]"></i> Grid: ON';
-                showToast("Grid ubinan 10 m² diaktifkan");
+                showToast("Grid kotak 1×1 m (0,000009°) aktif");
             } else {
                 if (btn) btn.innerHTML = '<i class="fa-solid fa-border-all text-slate-400"></i> Grid: OFF';
-                showToast("Grid ubinan disembunyikan");
+                showToast("Grid disembunyikan");
             }
             updatePolygon();
         }
